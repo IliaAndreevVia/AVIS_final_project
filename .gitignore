@@ -1,0 +1,53 @@
+# Jupyter
+.ipynb_checkpoints/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+
+# Environment
+.env
+.venv/
+
+# Datasets
+datasets/
+
+# Cache
+.cache/
+huggingface/
+transformers_cache/
+
+# Temporary files
+*.tmp
+*.log
+
+
+# =========================================================
+# YOLO RUNS
+# =========================================================
+
+# Ignore everything
+runs/**
+
+# Allow directory traversal
+!runs/**/
+
+# Keep ONLY final best weights
+!runs/**/train_best/weights/best.pt
+
+
+# =========================================================
+# NLP TRAINING CHECKPOINTS
+# =========================================================
+
+# We don't need intermediate HuggingFace checkpoints
+trained_models/**/checkpoint-*/

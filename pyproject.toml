@@ -1,0 +1,25 @@
+[project]
+name = "avis-final-project"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "datasets>=5.0.1",
+    "easyocr>=1.7.2",
+    "jupyterlab>=4.6.1",
+    "matplotlib>=3.11.0",
+    "numpy>=2.4.6",
+    "paddleocr>=2.10.0",
+    "paddlepaddle>=3.3.1",
+    "pandas>=3.0.3",
+    "ray[tune]>=2.56.1",
+    "scikit-learn>=1.9.0",
+    "seaborn>=0.13.2",
+    "skilearn>=0.1.0",
+    "tensorflow>=2.21.0",
+    "torch>=2.12.1",
+    "torchvision>=0.27.1",
+    "transformers>=5.13.0",
+    "ultralytics>=8.4.87",
+]

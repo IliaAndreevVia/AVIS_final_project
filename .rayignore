@@ -1,0 +1,37 @@
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Datasets — обязательно исключить
+datasets/
+data/
+
+# Training outputs
+runs/
+wandb/
+ray_results/
+results/
+
+# Model weights
+*.pt
+*.pth
+*.onnx
+*.engine
+
+# Videos and large media
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.zip
+*.tar
+*.gz
+
+# Python and notebook cache
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# Git
+.git/
