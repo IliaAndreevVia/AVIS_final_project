@@ -10,8 +10,9 @@ def parse_args():
     )
 
     parser.add_argument(
-        "image",
+        "--image",
         type=Path,
+        default=Path("./run_check/ex.jpg"),
         help="Path to vehicle image",
     )
 
@@ -48,7 +49,7 @@ def main():
     print(f"Image: {image_path}")
     print()
 
-    inspection_result = inspection_result = run_inspection(
+    inspection_result = run_inspection(
         img_path=image_path,
         report_save_folder=report_path.parent)
 
