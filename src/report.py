@@ -8,68 +8,211 @@ import numpy as np
 
 from IPython.display import HTML, display
 
-def inspection_result_to_vehicle_data(inspection_result):
+def classification_to_result(
+    prediction,
+    certain_threshold=0.75,
+):
+    """
+    Convert raw classifier output to NLP-compatible format.
 
-    def make_vehicle_field(field):
-        confidence = field["confidence"]
-        value = field["value"]
+    If top-1 confidence >= certain_threshold:
+        return one certain value.
 
-        if confidence >= 0.76:
-            status = "certain"
-        elif confidence <= 0.42:
-            status = "unknown"
-            value = None
-        else:
-            status = "uncertain"
+    Otherwise:
+        return two most probable candidates.
+    """
+
+    confidence = float(
+        prediction["confidence"]
+    )
+
+    # -----------------------------------------------------
+    # Certain
+    # -----------------------------------------------------
+    if confidence >= certain_threshold:
 
         return {
-            "status": status,
-            "value": value,
+            "status": "certain",
+            "value": prediction["value"],
             "confidence": confidence,
         }
 
     # -----------------------------------------------------
-    # Vehicle information
+    # Uncertain
     # -----------------------------------------------------
+    return {
+        "status": "uncertain",
+        "candidates": [
+            {
+                "value": candidate["value"],
+                "confidence": float(
+                    candidate["confidence"]
+                ),
+            }
+            for candidate
+            in prediction["top2"]
+        ],
+    }
+    
+def inspection_result_to_vehicle_data(
+    inspection_result
+):
+
+    # =====================================================
+    # View name converter
+    # =====================================================
+
+    def view_to_nlp_name(view):
+        if view is None:
+            return None
+
+        return (
+            str(view)
+            .strip()
+            .lower()
+            .replace(" ", "_")
+        )
+
+    # =====================================================
+    # Vehicle fields
+    # =====================================================
+
+    def make_vehicle_field(
+        field,
+        transform_value=None,
+    ):
+        status = field.get("status")
+
+        # -------------------------------------------------
+        # Certain
+        # -------------------------------------------------
+        if status == "certain":
+
+            value = field.get("value")
+
+            if transform_value is not None:
+                value = transform_value(value)
+
+            return {
+                "status": "certain",
+                "value": value,
+                "confidence": float(
+                    field.get(
+                        "confidence",
+                        0.0,
+                    )
+                ),
+            }
+
+        # -------------------------------------------------
+        # Uncertain
+        # -------------------------------------------------
+        if status == "uncertain":
+
+            candidates = []
+
+            for candidate in field.get(
+                "candidates",
+                [],
+            ):
+                value = candidate["value"]
+
+                if transform_value is not None:
+                    value = transform_value(
+                        value
+                    )
+
+                candidates.append({
+                    "value": value,
+                    "confidence": float(
+                        candidate["confidence"]
+                    ),
+                })
+
+            return {
+                "status": "uncertain",
+                "candidates": candidates,
+            }
+
+        # -------------------------------------------------
+        # Unknown
+        # -------------------------------------------------
+        return {
+            "status": "unknown",
+            "value": None,
+            "confidence": float(
+                field.get(
+                    "confidence",
+                    0.0,
+                )
+            ),
+        }
+
+    # =====================================================
+    # Vehicle information
+    # =====================================================
 
     vehicle_data = {
+
         "brand": make_vehicle_field(
-            inspection_result["vehicle"]["brand"]
+            inspection_result[
+                "vehicle"
+            ]["brand"]
         ),
 
         "vehicle_type": make_vehicle_field(
-            inspection_result["vehicle"]["type"]
+            inspection_result[
+                "vehicle"
+            ]["type"]
         ),
 
         "color": make_vehicle_field(
-            inspection_result["vehicle"]["color"]
+            inspection_result[
+                "vehicle"
+            ]["color"]
         ),
 
         "viewpoint": make_vehicle_field(
-            inspection_result["vehicle"]["view"]
+            inspection_result[
+                "vehicle"
+            ]["view"],
+            transform_value=view_to_nlp_name,
         ),
     }
 
-    # -----------------------------------------------------
+    # =====================================================
     # License plate
-    # -----------------------------------------------------
+    # =====================================================
 
-    plate_confidence = inspection_result["license_plate"].get(
-        "confidence",
-        0.0
+    plate_confidence = float(
+        inspection_result[
+            "license_plate"
+        ].get(
+            "confidence",
+            0.0,
+        )
     )
 
-    plate_text = inspection_result["license_plate"].get(
+    plate_text = inspection_result[
+        "license_plate"
+    ].get(
         "text"
     )
 
-    if plate_confidence >= 0.82:
+    if plate_text is None:
+
+        plate_status = "unknown"
+
+    elif plate_confidence >= 0.82:
+
         plate_status = "certain"
 
     elif plate_confidence >= 0.42:
+
         plate_status = "uncertain"
 
     else:
+
         plate_status = "unknown"
         plate_text = None
 
@@ -79,21 +222,36 @@ def inspection_result_to_vehicle_data(inspection_result):
         "confidence": plate_confidence,
     }
 
-    # -----------------------------------------------------
+    # =====================================================
     # Damages
-    # -----------------------------------------------------
+    # =====================================================
 
     vehicle_data["damaged_parts"] = {
+
         part_name: [
             {
-                "damage_type": damage["damage_type"],
-                "confidence": damage.get("confidence", 0.0),
+                "damage_type": damage[
+                    "damage_type"
+                ],
+                "confidence": float(
+                    damage.get(
+                        "confidence",
+                        0.0,
+                    )
+                ),
             }
-            for damage in part_result["damages"]
+            for damage
+            in part_result["damages"]
         ]
+
         for part_name, part_result
-        in inspection_result["damage_analysis"]["parts"].items()
-        if len(part_result["damages"]) > 0
+        in inspection_result[
+            "damage_analysis"
+        ]["parts"].items()
+
+        if len(
+            part_result["damages"]
+        ) > 0
     }
 
     return vehicle_data
@@ -150,8 +308,11 @@ def generate_inspection_report(
         # Image path
         if isinstance(image, (str, Path)):
             image = cv2.imread(str(image))
-            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-            
+            image = cv2.cvtColor(
+                image,
+                cv2.COLOR_BGR2RGB
+            )
+
             if image is None:
                 return None
 
@@ -164,13 +325,18 @@ def generate_inspection_report(
 
         # Convert datatype if necessary
         if image.dtype != np.uint8:
-            image = np.clip(image, 0, 255).astype(np.uint8)
+            image = np.clip(
+                image,
+                0,
+                255
+            ).astype(np.uint8)
 
         # Encode
         image = cv2.cvtColor(
             image,
             cv2.COLOR_BGR2RGB
         )
+
         success, buffer = cv2.imencode(
             ".jpg",
             image,
@@ -184,7 +350,10 @@ def generate_inspection_report(
             buffer
         ).decode("utf-8")
 
-        return f"data:image/jpeg;base64,{encoded}"
+        return (
+            f"data:image/jpeg;base64,"
+            f"{encoded}"
+        )
 
 
     # =========================================================
@@ -195,7 +364,108 @@ def generate_inspection_report(
         if value is None:
             return default
 
-        return html_lib.escape(str(value))
+        return html_lib.escape(
+            str(value)
+        )
+
+
+    # =========================================================
+    # <<< ИСПРАВЛЕНИЕ 1
+    # Helper for certain / uncertain vehicle fields
+    # =========================================================
+    def format_vehicle_field(field):
+        """
+        Format classification result.
+
+        Certain:
+            mazda (1.00)
+
+        Uncertain:
+            beige (0.55) / tan (0.31)
+        """
+
+        if not field:
+            return (
+                'N/A '
+                '<span class="confidence">'
+                '(0.00)'
+                '</span>'
+            )
+
+        status = field.get("status")
+
+        # -----------------------------------------------------
+        # Uncertain -> show top-2 candidates
+        # -----------------------------------------------------
+        if status == "uncertain":
+
+            candidates = field.get(
+                "candidates",
+                []
+            )
+
+            # Highest confidence first
+            candidates = sorted(
+                candidates,
+                key=lambda candidate: candidate.get(
+                    "confidence",
+                    0.0
+                ),
+                reverse=True,
+            )[:2]
+
+            if not candidates:
+                return (
+                    'N/A '
+                    '<span class="confidence">'
+                    '(0.00)'
+                    '</span>'
+                )
+
+            candidate_html = []
+
+            for candidate in candidates:
+
+                value = safe(
+                    candidate.get("value")
+                )
+
+                confidence = float(
+                    candidate.get(
+                        "confidence",
+                        0.0
+                    )
+                )
+
+                candidate_html.append(
+                    f'{value} '
+                    f'<span class="confidence">'
+                    f'({confidence:.2f})'
+                    f'</span>'
+                )
+
+            return " / ".join(
+                candidate_html
+            )
+
+        # -----------------------------------------------------
+        # Certain / fallback
+        # -----------------------------------------------------
+        value = field.get("value")
+
+        confidence = float(
+            field.get(
+                "confidence",
+                0.0
+            )
+        )
+
+        return (
+            f'{safe(value)} '
+            f'<span class="confidence">'
+            f'({confidence:.2f})'
+            f'</span>'
+        )
 
 
     # =========================================================
@@ -206,10 +476,25 @@ def generate_inspection_report(
         {}
     )
 
-    color = vehicle.get("color", {})
-    vehicle_type = vehicle.get("type", {})
-    brand = vehicle.get("brand", {})
-    view = vehicle.get("view", {})
+    color = vehicle.get(
+        "color",
+        {}
+    )
+
+    vehicle_type = vehicle.get(
+        "type",
+        {}
+    )
+
+    brand = vehicle.get(
+        "brand",
+        {}
+    )
+
+    view = vehicle.get(
+        "view",
+        {}
+    )
 
 
     # =========================================================
@@ -220,8 +505,14 @@ def generate_inspection_report(
         {}
     )
 
-    plate_text = plate.get("text")
-    plate_conf = plate.get("confidence")
+    plate_text = plate.get(
+        "text"
+    )
+
+    plate_conf = plate.get(
+        "confidence"
+    )
+
     plate_image = image_to_base64(
         plate.get("image")
     )
@@ -390,13 +681,19 @@ def generate_inspection_report(
 
         confidence_text = (
             f"{confidence:.2f}"
-            if isinstance(confidence, (int, float))
+            if isinstance(
+                confidence,
+                (int, float)
+            )
             else "N/A"
         )
 
         area_text = (
             f"{area:.2f}%"
-            if isinstance(area, (int, float))
+            if isinstance(
+                area,
+                (int, float)
+            )
             else "N/A"
         )
 
@@ -424,9 +721,11 @@ def generate_inspection_report(
         damage_photos_html += f"""
         <div class="damage-photo">
             <img src="{item['image']}">
+
             <div class="photo-title">
                 {safe(item["part"])}
             </div>
+
             <div class="photo-subtitle">
                 {safe(damages_text)}
             </div>
@@ -671,70 +970,64 @@ def generate_inspection_report(
 
                 <div>
 
+                    <!-- ================================= -->
+                    <!-- <<< ИСПРАВЛЕНИЕ 2 -->
+                    <!-- Используем format_vehicle_field -->
+                    <!-- ================================= -->
+
                     <div class="info-row">
+
                         <span class="label">
                             Brand
                         </span>
 
                         <span>
-                            {safe(brand.get("value"))}
-                            <span class="confidence">
-                                (
-                                {brand.get("confidence", 0):.2f}
-                                )
-                            </span>
+                            {format_vehicle_field(brand)}
                         </span>
+
                     </div>
 
 
                     <div class="info-row">
+
                         <span class="label">
                             Type
                         </span>
 
                         <span>
-                            {safe(vehicle_type.get("value"))}
-                            <span class="confidence">
-                                (
-                                {vehicle_type.get("confidence", 0):.2f}
-                                )
-                            </span>
+                            {format_vehicle_field(vehicle_type)}
                         </span>
+
                     </div>
 
 
                     <div class="info-row">
+
                         <span class="label">
                             Color
                         </span>
 
                         <span>
-                            {safe(color.get("value"))}
-                            <span class="confidence">
-                                (
-                                {color.get("confidence", 0):.2f}
-                                )
-                            </span>
+                            {format_vehicle_field(color)}
                         </span>
+
                     </div>
 
 
                     <div class="info-row">
+
                         <span class="label">
                             View
                         </span>
 
                         <span>
-                            {safe(view.get("value"))}
-                            <span class="confidence">
-                                (
-                                {view.get("confidence", 0):.2f}
-                                )
-                            </span>
+                            {format_vehicle_field(view)}
                         </span>
+
                     </div>
 
                 </div>
+
 
                 <div>
                     {original_image_html}
@@ -769,6 +1062,7 @@ def generate_inspection_report(
                     </span>
 
                 </div>
+
 
                 <div class="info-row">
 
@@ -942,7 +1236,9 @@ def generate_inspection_report(
     # =========================================================
     if save_path is not None:
 
-        save_path = Path(save_path)
+        save_path = Path(
+            save_path
+        )
 
         save_path.parent.mkdir(
             parents=True,

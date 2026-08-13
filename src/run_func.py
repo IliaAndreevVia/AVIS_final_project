@@ -39,61 +39,141 @@ def efficientnet_loader(model_path, num_class_path, device):
     return model
 
 
-def predict_classification(model,
-                           image,
-                           transform,
-                           classes,
-                           device):
+def predict_classification(
+    model,
+    image,
+    transform,
+    classes,
+    device,
+):
     """
-    Prediction for a classification model.
-
-    Parameters
-    ----------
-    model : torch.nn.Module
-        Trained classification model.
-
-    image : PIL.Image.Image
-        Input RGB image.
-
-    transform : torchvision.transforms
-        Transform used for the model.
-
-    classes : list
-        Class names in the same order as during training.
-
-    device : torch.device
-        CPU or CUDA.
+    Predict top-2 classes.
 
     Returns
     -------
     dict
         {
-            "value": class_name,
-            "confidence": float
+            "value": str,
+            "confidence": float,
+            "top2": [
+                {
+                    "value": str,
+                    "confidence": float
+                },
+                {
+                    "value": str,
+                    "confidence": float
+                }
+            ]
         }
     """
 
     image_tensor = transform(image)
 
-    # [C, H, W] -> [1, C, H, W]
-    image_tensor = image_tensor.unsqueeze(0).to(device)
-
-    logits = model(image_tensor)
-
-    probabilities = F.softmax(logits, dim=1)
-
-    confidence, predicted_idx = torch.max(
-        probabilities,
-        dim=1
+    image_tensor = (
+        image_tensor
+        .unsqueeze(0)
+        .to(device)
     )
 
-    predicted_idx = predicted_idx.item()
-    confidence = confidence.item()
+    model.eval()
+
+    outputs = model(image_tensor)
+
+    probabilities = torch.softmax(
+        outputs,
+        dim=1,
+    )
+
+    k = min(
+        2,
+        probabilities.shape[1],
+    )
+
+    top_confidences, top_indices = torch.topk(
+        probabilities,
+        k=k,
+        dim=1,
+    )
+
+    top_confidences = (
+        top_confidences[0]
+        .cpu()
+        .tolist()
+    )
+
+    top_indices = (
+        top_indices[0]
+        .cpu()
+        .tolist()
+    )
+
+    top2 = [
+        {
+            "value": classes[index],
+            "confidence": float(confidence),
+        }
+        for index, confidence
+        in zip(
+            top_indices,
+            top_confidences,
+        )
+    ]
 
     return {
-        "value": classes[predicted_idx],
-        "confidence": confidence
+        "value": top2[0]["value"],
+        "confidence": top2[0]["confidence"],
+        "top2": top2,
     }
+
+
+def get_expected_parts(
+    view_result,
+    expected_parts_by_view,
+):
+    """
+    Build expected parts list based on view prediction.
+
+    Certain viewpoint:
+        parts from one view.
+
+    Uncertain viewpoint:
+        union of parts from top-2 views.
+    """
+
+    # -----------------------------------------------------
+    # Certain viewpoint
+    # -----------------------------------------------------
+    if view_result["status"] == "certain":
+
+        views = [
+            view_result["value"]
+        ]
+
+    # -----------------------------------------------------
+    # Uncertain viewpoint
+    # -----------------------------------------------------
+    else:
+
+        views = [
+            candidate["value"]
+            for candidate
+            in view_result["candidates"]
+        ]
+
+    # -----------------------------------------------------
+    # Union of expected parts
+    # -----------------------------------------------------
+    expected_parts = sorted(
+        set().union(
+            *[
+                expected_parts_by_view[view]
+                for view in views
+            ]
+        )
+    )
+
+    return expected_parts
 
 def detect_parts(
     expected_parts,
@@ -514,7 +594,6 @@ def show_detected_parts_grid(parts_result, cols=3):
         figsize=(5 * cols, 4 * rows)
     )
 
-    # Всегда превращаем axes в одномерный массив
     axes = np.array(axes).reshape(-1)
 
     for ax, (part_name, part_data) in zip(axes, parts):
@@ -535,7 +614,6 @@ def show_detected_parts_grid(parts_result, cols=3):
 
         ax.axis("off")
 
-    # Скрываем пустые subplot
     for ax in axes[n:]:
         ax.axis("off")
 
