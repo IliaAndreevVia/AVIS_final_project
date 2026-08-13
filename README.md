@@ -32,7 +32,7 @@ AVIS performs the following tasks:
 
 The diagram below shows the complete AVIS workflow, from the input image to the final inspection report.
 
-![AVIS Pipeline](./media/pipeline.png)
+![AVIS Pipeline](./media/pipeline.jpg)
 
 The pipeline combines several independent machine learning models. Their predictions are aggregated into a common structured result and then used for damage visualization and automatic textual report generation.
 
